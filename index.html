@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Turnout Coat Log</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+</head>
+<body class="bg-gradient-to-br from-red-50 to-orange-50 min-h-screen">
+    <div id="app" class="p-4 max-w-4xl mx-auto">
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center gap-3">
+                    <div class="bg-red-600 p-3 rounded-lg">
+                        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-3xl font-bold text-gray-800">Turnout Coat Log</h1>
+                        <p class="text-gray-600">Track advanced cleaning and inspections</p>
+                    </div>
+                </div>
+                <button onclick="showLogs()" class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    Logs
+                </button>
+            </div>
+
+            <div id="content"></div>
+        </div>
+    </div>
+
+    <script>
+        const FIREBASE_URL = 'https://smc-fireeee-default-rtdb.firebaseio.com';
+        let coats = {};
+        let currentStep = 'lookup';
+        let searchInput = '';
+        let searchType = 'serial';
+        let currentCoat = null;
+        let activityChecks = { cleaned: false, inspected: false };
+        let searchResults = [];
+        let newCoatData = {
+            serialNumber: '',
+            firefighterName: '',
+            manufactureDate: '',
+            modelNumber: '',
+            cleaned: false,
+            inspected: false
+        };
+
+        // Load data from Firebase
+        async function loadData() {
+            try {
+                const response = await fetch(`${FIREBASE_URL}/coats.json`);
+                const data = await response.json();
+                coats = data || {};
+                render();
+            } catch (error) {
+                console.error('Error loading data:', error);
+                coats = {};
+                render();
+            }
+        }
+
+        // Save data to Firebase
+        async function saveData() {
+            try {
+                await fetch(`${FIREBASE_URL}/coats.json`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(coats)
+                });
+            } catch (error) {
+                console.error('Error saving data:', error);
+                alert('Error saving data. Please try again.');
+            }
+        }
+
+        function exportToExcel() {
+            let csvData = [['Serial Number', 'Firefighter Name', 'Model Number', 'Manufacture Date', 'Activity Date', 'Advanced Cleaning', 'Advanced Inspection']];
+            
+            Object.values(coats).forEach(coat => {
+                coat.logs.forEach(log => {
+                    csvData.push([
+                        coat.serialNumber,
+                        coat.firefighterName,
+                        coat.modelNumber || '',
+                        coat.manufactureDate || '',
+                        new Date(log.date).toLocaleDateString(),
+                        log.cleaned ? 'Yes' : 'No',
+                        log.inspected ? 'Yes' : 'No'
+                    ]);
+                });
+            });
+
+            const csv = Papa.unparse(csvData);
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `turnout-coat-logs-${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+        function handleLookup() {
+            if (searchInput.length < 3) {
+                alert('Please enter at least 3 characters');
+                return;
+            }
+
+            if (searchType === 'serial') {
+                const matchingCoats = Object.entries(coats).filter(([serial]) => 
+                    serial.endsWith(searchInput.toUpperCase()) || serial === searchInput.toUpperCase()
+                );
+
+                if (matchingCoats.length === 0) {
+                    newCoatData.serialNumber = searchInput.toUpperCase();
+                    currentStep = 'register';
+                } else if (matchingCoats.length === 1) {
+                    currentCoat = matchingCoats[0][1];
+                    activityChecks = { cleaned: false, inspected: false };
+                    currentStep = 'log';
+                } else {
+                    searchResults = matchingCoats;
+                    currentStep = 'select';
+                }
+            } else {
+                const matchingCoats = Object.entries(coats).filter(([_, coat]) => 
+                    coat.firefighterName.toLowerCase().includes(searchInput.toLowerCase())
+                );
+
+                if (matchingCoats.length === 0) {
+                    alert('No coats found for that firefighter name');
+                    return;
+                } else if (matchingCoats.length === 1) {
+                    currentCoat = matchingCoats[0][1];
+                    activityChecks = { cleaned: false, inspected: false };
+                    currentStep = 'log';
+                } else {
+                    searchResults = matchingCoats;
+                    currentStep = 'select';
+                }
+            }
+            render();
+        }
+
+        function selectCoat(coat) {
+            currentCoat = coat;
+            activityChecks = { cleaned: false, inspected: false };
+            currentStep = 'log';
+            render();
+        }
+
+        async function handleRegister() {
+            if (!newCoatData.serialNumber || !newCoatData.firefighterName) {
+                alert('Please fill in serial number and firefighter name');
+                return;
+            }
+
+            const coat = {
+                ...newCoatData,
+                logs: [{
+                    date: new Date().toISOString(),
+                    cleaned: newCoatData.cleaned,
+                    inspected: newCoatData.inspected
+                }],
+                lastCleaned: newCoatData.cleaned ? new Date().toISOString() : null,
+                lastInspected: newCoatData.inspected ? new Date().toISOString() : null
+            };
+
+            coats[newCoatData.serialNumber] = coat;
+            await saveData();
+            
+            currentStep = 'confirmation';
+            render();
+            setTimeout(() => {
+                resetForm();
+            }, 2500);
+        }
+
+        async function handleLogActivity() {
+            if (!activityChecks.cleaned && !activityChecks.inspected) {
+                alert('Please select at least one activity (Advanced Cleaning or Advanced Inspection)');
+                return;
+            }
+
+            const log = {
+                date: new Date().toISOString(),
+                cleaned: activityChecks.cleaned,
+                inspected: activityChecks.inspected
+            };
+
+            currentCoat.logs.push(log);
+            if (activityChecks.cleaned) currentCoat.lastCleaned = new Date().toISOString();
+            if (activityChecks.inspected) currentCoat.lastInspected = new Date().toISOString();
+
+            coats[currentCoat.serialNumber] = currentCoat;
+            await saveData();
+            
+            currentStep = 'confirmation';
+            render();
+            setTimeout(() => {
+                resetForm();
+            }, 2500);
+        }
+
+        function resetForm() {
+            currentStep = 'lookup';
+            searchInput = '';
+            currentCoat = null;
+            searchResults = [];
+            activityChecks = { cleaned: false, inspected: false };
+            newCoatData = {
+                serialNumber: '',
+                firefighterName: '',
+                manufactureDate: '',
+                modelNumber: '',
+                cleaned: false,
+                inspected: false
+            };
+            render();
+        }
+
+        function showLogs() {
+            currentStep = 'logs';
+            render();
+        }
+
+        function render() {
+            const content = document.getElementById('content');
+            
+            if (currentStep === 'confirmation') {
+                content.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-12">
+                        <svg class="w-16 h-16 text-green-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <h2 class="text-2xl font-bold text-gray-800 mb-2">Activity Logged!</h2>
+                        <p class="text-gray-600">Returning to main screen...</p>
+                    </div>
+                `;
+            } else if (currentStep === 'logs') {
+                const totalLogs = Object.values(coats).reduce((sum, coat) => sum + coat.logs.length, 0);
+                content.innerHTML = `
+                    <div>
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-2xl font-bold text-gray-800">All Logs</h2>
+                            <button onclick="exportToExcel()" class="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                </svg>
+                                Export to Excel
+                            </button>
+                        </div>
+
+                        <div class="mb-4 p-4 bg-blue-50 rounded-lg">
+                            <p class="text-sm text-blue-800">
+                                Total Coats: <strong>${Object.keys(coats).length}</strong> | 
+                                Total Logs: <strong>${totalLogs}</strong>
+                            </p>
+                        </div>
+
+                        <div class="space-y-4 max-h-96 overflow-y-auto">
+                            ${Object.values(coats).length === 0 ? 
+                                '<p class="text-center text-gray-500 py-8">No logs yet</p>' :
+                                Object.values(coats).map(coat => `
+                                    <div class="border-2 border-gray-200 rounded-lg p-4">
+                                        <div class="flex justify-between items-start mb-3">
+                                            <div>
+                                                <p class="font-mono font-bold text-lg">${coat.serialNumber}</p>
+                                                <p class="text-gray-700 font-semibold">${coat.firefighterName}</p>
+                                                ${coat.modelNumber ? `<p class="text-sm text-gray-600">Model: ${coat.modelNumber}</p>` : ''}
+                                            </div>
+                                            <div class="text-right text-sm">
+                                                <p class="text-gray-600">Last Cleaned: <strong>${coat.lastCleaned ? new Date(coat.lastCleaned).toLocaleDateString() : 'Never'}</strong></p>
+                                                <p class="text-gray-600">Last Inspected: <strong>${coat.lastInspected ? new Date(coat.lastInspected).toLocaleDateString() : 'Never'}</strong></p>
+                                            </div>
+                                        </div>
+                                        <div class="bg-gray-50 rounded p-3">
+                                            <p class="text-sm font-semibold text-gray-700 mb-2">Activity Log (${coat.logs.length} entries):</p>
+                                            <div class="space-y-1">
+                                                ${coat.logs.slice().reverse().map(log => `
+                                                    <div class="text-sm text-gray-700 flex justify-between">
+                                                        <span>${new Date(log.date).toLocaleString()}</span>
+                                                        <span>
+                                                            ${log.cleaned ? '<span class="text-blue-600 font-semibold">Cleaned</span>' : ''}
+                                                            ${log.cleaned && log.inspected ? '<span class="mx-1">•</span>' : ''}
+                                                            ${log.inspected ? '<span class="text-green-600 font-semibold">Inspected</span>' : ''}
+                                                        </span>
+                                                    </div>
+                                                `).join('')}
+                                            </div>
+                                        </div>
+                                    </div>
+                                `).join('')
+                            }
+                        </div>
+
+                        <button onclick="resetForm()" class="w-full mt-6 bg-red-600 text-white py-3 rounded-lg font-bold hover:bg-red-700 transition-colors">
+                            Back to Logging
+                        </button>
+                    </div>
+                `;
+            } else if (currentStep === 'lookup') {
+                content.innerHTML = `
+                    <div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Search By</label>
+                            <div class="flex gap-4 mb-4">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="radio" name="searchType" value="serial" ${searchType === 'serial' ? 'checked' : ''} onchange="searchType='serial'" class="w-4 h-4">
+                                    <span class="text-gray-700">Serial Number</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="radio" name="searchType" value="name" ${searchType === 'name' ? 'checked' : ''} onchange="searchType='name'" class="w-4 h-4">
+                                    <span class="text-gray-700">Firefighter Name</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="mb-6">
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                <svg class="inline w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                </svg>
+                                ${searchType === 'serial' ? 'Enter Serial Number (Last 5 digits or full)' : 'Enter Firefighter Name'}
+                            </label>
+                            <input type="text" id="searchInput" placeholder="${searchType === 'serial' ? 'e.g., 12345 or ABC12345' : 'e.g., John Smith'}" 
+                                class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none text-lg" 
+                                onkeypress="if(event.key==='Enter') handleLookup()" autofocus>
+                        </div>
+                        <button onclick="searchInput=document.getElementById('searchInput').value; handleLookup()" 
+                            class="w-full bg-red-600 text-white py-4 rounded-lg font-bold text-lg hover:bg-red-700 transition-colors shadow-lg">
+                            Search Coat
+                        </button>
+                        <div class="mt-4 p-4 bg-blue-50 rounded-lg">
+                            <p class="text-sm text-blue-800">
+                                <svg class="inline w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                                Search by last 5 digits of serial or firefighter name for quick lookup
+                            </p>
+                        </div>
+                    </div>
+                `;
+            } else if (currentStep === 'select') {
+                content.innerHTML = `
+                    <div>
+                        <h2 class="text-xl font-bold text-gray-800 mb-4">Multiple Coats Found - Select One</h2>
+                        <div class="space-y-3 mb-6">
+                            ${searchResults.map(([serial, coat]) => `
+                                <button onclick='selectCoat(${JSON.stringify(coat).replace(/'/g, "&apos;")})' 
+                                    class="w-full bg-gray-50 hover:bg-gray-100 border-2 border-gray-300 rounded-lg p-4 text-left transition-colors">
+                                    <p class="font-mono font-bold text-lg">${serial}</p>
+                                    <p class="text-gray-700">${coat.firefighterName}</p>
+                                    ${coat.modelNumber ? `<p class="text-sm text-gray-600">Model: ${coat.modelNumber}</p>` : ''}
+                                </button>
+                            `).join('')}
+                        </div>
+                        <button onclick="resetForm()" class="w-full bg-gray-500 text-white py-3 rounded-lg font-bold hover:bg-gray-600 transition-colors">
+                            Cancel
+                        </button>
+                    </div>
+                `;
+            } else if (currentStep === 'register') {
+                content.innerHTML = `
+                    <div>
+                        <h2 class="text-xl font-bold text-gray-800 mb-4">New Coat Registration</h2>
+                        
+                        <div class="mb-4">
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Full Serial Number *</label>
+                            <input type="text" id="regSerial" value="${newCoatData.serialNumber}" 
+                                class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none font-mono">
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Firefighter Name *</label>
+                            <input type="text" id="regName" 
+                                class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none">
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Manufacture Date</label>
+                            <input type="date" id="regDate" 
+                                class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none">
+                        </div>
+
+                        <div class="mb-6">
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Model Number</label>
+                            <input type="text" id="regModel" 
+                                class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none">
+                        </div>
+
+                        <div class="mb-6 p-4 bg-gray-50 rounded-lg">
+                            <p class="font-semibold text-gray-700 mb-3">Today's Activity</p>
+                            <div class="space-y-2">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="regCleaned" class="w-5 h-5">
+                                    <span class="text-gray-700">Advanced Cleaning</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="regInspected" class="w-5 h-5">
+                                    <span class="text-gray-700">Advanced Inspection</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="flex gap-3">
+                            <button onclick="resetForm()" class="flex-1 bg-gray-500 text-white py-4 rounded-lg font-bold text-lg hover:bg-gray-600 transition-colors">
+                                Cancel
+                            </button>
+                            <button onclick="
+                                newCoatData.serialNumber = document.getElementById('regSerial').value.toUpperCase();
+                                newCoatData.firefighterName = document.getElementById('regName').value;
+                                newCoatData.manufactureDate = document.getElementById('regDate').value;
+                                newCoatData.modelNumber = document.getElementById('regModel').value;
+                                newCoatData.cleaned = document.getElementById('regCleaned').checked;
+                                newCoatData.inspected = document.getElementById('regInspected').checked;
+                                handleRegister();
+                            " class="flex-1 bg-red-600 text-white py-4 rounded-lg font-bold text-lg hover:bg-red-700 transition-colors shadow-lg">
+                                Register & Log
+                            </button>
+                        </div>
+                    </div>
+                `;
+            } else if (currentStep === 'log') {
+                content.innerHTML = `
+                    <div>
+                        <h2 class="text-xl font-bold text-gray-800 mb-4">Coat Found</h2>
+                        
+                        <div class="bg-gray-50 rounded-lg p-4 mb-6">
+                            <div class="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                    <p class="text-gray-600">Serial Number</p>
+                                    <p class="font-mono font-bold">${currentCoat.serialNumber}</p>
+                                </div>
+                                <div>
+                                    <p class="text-gray-600">Firefighter</p>
+                                    <p class="font-bold">${currentCoat.firefighterName}</p>
+                                </div>
+                                ${currentCoat.modelNumber ? `
+                                    <div>
+                                        <p class="text-gray-600">Model</p>
+                                        <p class="font-bold">${currentCoat.modelNumber}</p>
+                                    </div>
+                                ` : ''}
+                                ${currentCoat.manufactureDate ? `
+                                    <div>
+                                        <p class="text-gray-600">Manufacture Date</p>
+                                        <p class="font-bold">${new Date(currentCoat.manufactureDate).toLocaleDateString()}</p>
+                                    </div>
+                                ` : ''}
+                                <div>
+                                    <p class="text-gray-600">Last Cleaned</p>
+                                    <p class="font-bold">${currentCoat.lastCleaned ? new Date(currentCoat.lastCleaned).toLocaleDateString() : 'Never'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-gray-600">Last Inspected</p>
+                                    <p class="font-bold">${currentCoat.lastInspected ? new Date(currentCoat.lastInspected).toLocaleDateString() : 'Never'}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h3 class="text-lg font-bold text-gray-800 mb-4">Log Today's Activity</h3>
+                        
+                        <div class="mb-6 p-4 bg-gray-50 rounded-lg">
+                            <div class="space-y-3">
+                                <label class="flex items-center gap-3 cursor-pointer p-3 bg-white rounded-lg border-2 border-gray-300 hover:border-blue-400 transition-colors">
+                                    <input type="checkbox" id="logCleaned" class="w-6 h-6">
+                                    <span class="text-gray-700 font-semibold text-lg">Advanced Cleaning</span>
+                                </label>
+                                <label class="flex items-center gap-3 cursor-pointer p-3 bg-white rounded-lg border-2 border-gray-300 hover:border-green-400 transition-colors">
+                                    <input type="checkbox" id="logInspected" class="w-6 h-6">
+                                    <span class="text-gray-700 font-semibold text-lg">Advanced Inspection</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="flex gap-3">
+                            <button onclick="resetForm()" class="flex-1 bg-gray-500 text-white py-4 rounded-lg font-bold hover:bg-gray-600 transition-colors">
+                                Cancel
+                            </button>
+                            <button onclick="
+                                activityChecks.cleaned = document.getElementById('logCleaned').checked;
+                                activityChecks.inspected = document.getElementById('logInspected').checked;
+                                handleLogActivity();
+                            " class="flex-1 bg-red-600 text-white py-4 rounded-lg font-bold hover:bg-red-700 transition-colors shadow-lg">
+                                Submit Log
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // Initialize
+        loadData();
+    </script>
+</body>
+</html>
