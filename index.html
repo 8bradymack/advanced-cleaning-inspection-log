@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Turnout Coat Log</title>
+    <title>Advanced Cleaning Log</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 </head>
@@ -14,11 +14,11 @@
                 <div class="flex items-center gap-3">
                     <div class="bg-red-600 p-3 rounded-lg">
                         <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
                         </svg>
                     </div>
                     <div>
-                        <h1 class="text-3xl font-bold text-gray-800">Turnout Coat Log</h1>
+                        <h1 class="text-3xl font-bold text-gray-800">Advanced Cleaning Log</h1>
                         <p class="text-gray-600">Track advanced cleaning and inspections</p>
                     </div>
                 </div>
@@ -36,16 +36,17 @@
 
     <script>
         const FIREBASE_URL = 'https://smc-fireeee-default-rtdb.firebaseio.com';
-        let coats = {};
+        let items = {};
         let currentStep = 'lookup';
         let searchInput = '';
         let searchType = 'serial';
-        let currentCoat = null;
+        let currentItem = null;
         let activityChecks = { cleaned: false, inspected: false };
         let searchResults = [];
-        let newCoatData = {
+        let newItemData = {
             serialNumber: '',
             firefighterName: '',
+            itemType: '',
             manufactureDate: '',
             modelNumber: '',
             cleaned: false,
@@ -55,13 +56,13 @@
         // Load data from Firebase
         async function loadData() {
             try {
-                const response = await fetch(`${FIREBASE_URL}/coats.json`);
+                const response = await fetch(`${FIREBASE_URL}/items.json`);
                 const data = await response.json();
-                coats = data || {};
+                items = data || {};
                 render();
             } catch (error) {
                 console.error('Error loading data:', error);
-                coats = {};
+                items = {};
                 render();
             }
         }
@@ -69,10 +70,10 @@
         // Save data to Firebase
         async function saveData() {
             try {
-                await fetch(`${FIREBASE_URL}/coats.json`, {
+                await fetch(`${FIREBASE_URL}/items.json`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(coats)
+                    body: JSON.stringify(items)
                 });
             } catch (error) {
                 console.error('Error saving data:', error);
@@ -81,15 +82,16 @@
         }
 
         function exportToExcel() {
-            let csvData = [['Serial Number', 'Firefighter Name', 'Model Number', 'Manufacture Date', 'Activity Date', 'Advanced Cleaning', 'Advanced Inspection']];
+            let csvData = [['Serial Number', 'Firefighter Name', 'Item Type', 'Model Number', 'Manufacture Date', 'Activity Date', 'Advanced Cleaning', 'Advanced Inspection']];
             
-            Object.values(coats).forEach(coat => {
-                coat.logs.forEach(log => {
+            Object.values(items).forEach(item => {
+                item.logs.forEach(log => {
                     csvData.push([
-                        coat.serialNumber,
-                        coat.firefighterName,
-                        coat.modelNumber || '',
-                        coat.manufactureDate || '',
+                        item.serialNumber,
+                        item.firefighterName,
+                        item.itemType,
+                        item.modelNumber || '',
+                        item.manufactureDate || '',
                         new Date(log.date).toLocaleDateString(),
                         log.cleaned ? 'Yes' : 'No',
                         log.inspected ? 'Yes' : 'No'
@@ -102,7 +104,7 @@
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `turnout-coat-logs-${new Date().toISOString().split('T')[0]}.csv`;
+            a.download = `advanced-cleaning-log-${new Date().toISOString().split('T')[0]}.csv`;
             a.click();
             window.URL.revokeObjectURL(url);
         }
@@ -114,66 +116,66 @@
             }
 
             if (searchType === 'serial') {
-                const matchingCoats = Object.entries(coats).filter(([serial]) => 
+                const matchingItems = Object.entries(items).filter(([serial]) => 
                     serial.endsWith(searchInput.toUpperCase()) || serial === searchInput.toUpperCase()
                 );
 
-                if (matchingCoats.length === 0) {
-                    newCoatData.serialNumber = searchInput.toUpperCase();
+                if (matchingItems.length === 0) {
+                    newItemData.serialNumber = searchInput.toUpperCase();
                     currentStep = 'register';
-                } else if (matchingCoats.length === 1) {
-                    currentCoat = matchingCoats[0][1];
+                } else if (matchingItems.length === 1) {
+                    currentItem = matchingItems[0][1];
                     activityChecks = { cleaned: false, inspected: false };
                     currentStep = 'log';
                 } else {
-                    searchResults = matchingCoats;
+                    searchResults = matchingItems;
                     currentStep = 'select';
                 }
             } else {
-                const matchingCoats = Object.entries(coats).filter(([_, coat]) => 
-                    coat.firefighterName.toLowerCase().includes(searchInput.toLowerCase())
+                const matchingItems = Object.entries(items).filter(([_, item]) => 
+                    item.firefighterName.toLowerCase().includes(searchInput.toLowerCase())
                 );
 
-                if (matchingCoats.length === 0) {
-                    alert('No coats found for that firefighter name');
+                if (matchingItems.length === 0) {
+                    alert('No items found for that firefighter name');
                     return;
-                } else if (matchingCoats.length === 1) {
-                    currentCoat = matchingCoats[0][1];
+                } else if (matchingItems.length === 1) {
+                    currentItem = matchingItems[0][1];
                     activityChecks = { cleaned: false, inspected: false };
                     currentStep = 'log';
                 } else {
-                    searchResults = matchingCoats;
+                    searchResults = matchingItems;
                     currentStep = 'select';
                 }
             }
             render();
         }
 
-        function selectCoat(coat) {
-            currentCoat = coat;
+        function selectItem(item) {
+            currentItem = item;
             activityChecks = { cleaned: false, inspected: false };
             currentStep = 'log';
             render();
         }
 
         async function handleRegister() {
-            if (!newCoatData.serialNumber || !newCoatData.firefighterName) {
-                alert('Please fill in serial number and firefighter name');
+            if (!newItemData.serialNumber || !newItemData.firefighterName || !newItemData.itemType) {
+                alert('Please fill in serial number, firefighter name, and item type');
                 return;
             }
 
-            const coat = {
-                ...newCoatData,
+            const item = {
+                ...newItemData,
                 logs: [{
                     date: new Date().toISOString(),
-                    cleaned: newCoatData.cleaned,
-                    inspected: newCoatData.inspected
+                    cleaned: newItemData.cleaned,
+                    inspected: newItemData.inspected
                 }],
-                lastCleaned: newCoatData.cleaned ? new Date().toISOString() : null,
-                lastInspected: newCoatData.inspected ? new Date().toISOString() : null
+                lastCleaned: newItemData.cleaned ? new Date().toISOString() : null,
+                lastInspected: newItemData.inspected ? new Date().toISOString() : null
             };
 
-            coats[newCoatData.serialNumber] = coat;
+            items[newItemData.serialNumber] = item;
             await saveData();
             
             currentStep = 'confirmation';
@@ -195,11 +197,11 @@
                 inspected: activityChecks.inspected
             };
 
-            currentCoat.logs.push(log);
-            if (activityChecks.cleaned) currentCoat.lastCleaned = new Date().toISOString();
-            if (activityChecks.inspected) currentCoat.lastInspected = new Date().toISOString();
+            currentItem.logs.push(log);
+            if (activityChecks.cleaned) currentItem.lastCleaned = new Date().toISOString();
+            if (activityChecks.inspected) currentItem.lastInspected = new Date().toISOString();
 
-            coats[currentCoat.serialNumber] = currentCoat;
+            items[currentItem.serialNumber] = currentItem;
             await saveData();
             
             currentStep = 'confirmation';
@@ -212,12 +214,13 @@
         function resetForm() {
             currentStep = 'lookup';
             searchInput = '';
-            currentCoat = null;
+            currentItem = null;
             searchResults = [];
             activityChecks = { cleaned: false, inspected: false };
-            newCoatData = {
+            newItemData = {
                 serialNumber: '',
                 firefighterName: '',
+                itemType: '',
                 manufactureDate: '',
                 modelNumber: '',
                 cleaned: false,
@@ -229,6 +232,18 @@
         function showLogs() {
             currentStep = 'logs';
             render();
+        }
+
+        function getItemIcon(itemType) {
+            const icons = {
+                'Helmet': '🪖',
+                'Coat': '🧥',
+                'Pants': '👖',
+                'Boots': '🥾',
+                'Gloves': '🧤',
+                'Hood': '🎭'
+            };
+            return icons[itemType] || '📦';
         }
 
         function render() {
@@ -245,7 +260,7 @@
                     </div>
                 `;
             } else if (currentStep === 'logs') {
-                const totalLogs = Object.values(coats).reduce((sum, coat) => sum + coat.logs.length, 0);
+                const totalLogs = Object.values(items).reduce((sum, item) => sum + item.logs.length, 0);
                 content.innerHTML = `
                     <div>
                         <div class="flex justify-between items-center mb-6">
@@ -260,31 +275,32 @@
 
                         <div class="mb-4 p-4 bg-blue-50 rounded-lg">
                             <p class="text-sm text-blue-800">
-                                Total Coats: <strong>${Object.keys(coats).length}</strong> | 
+                                Total Items: <strong>${Object.keys(items).length}</strong> | 
                                 Total Logs: <strong>${totalLogs}</strong>
                             </p>
                         </div>
 
                         <div class="space-y-4 max-h-96 overflow-y-auto">
-                            ${Object.values(coats).length === 0 ? 
+                            ${Object.values(items).length === 0 ? 
                                 '<p class="text-center text-gray-500 py-8">No logs yet</p>' :
-                                Object.values(coats).map(coat => `
+                                Object.values(items).map(item => `
                                     <div class="border-2 border-gray-200 rounded-lg p-4">
                                         <div class="flex justify-between items-start mb-3">
                                             <div>
-                                                <p class="font-mono font-bold text-lg">${coat.serialNumber}</p>
-                                                <p class="text-gray-700 font-semibold">${coat.firefighterName}</p>
-                                                ${coat.modelNumber ? `<p class="text-sm text-gray-600">Model: ${coat.modelNumber}</p>` : ''}
+                                                <p class="font-mono font-bold text-lg">${item.serialNumber}</p>
+                                                <p class="text-gray-700 font-semibold">${item.firefighterName}</p>
+                                                <p class="text-sm text-purple-600 font-semibold">${getItemIcon(item.itemType)} ${item.itemType}</p>
+                                                ${item.modelNumber ? `<p class="text-sm text-gray-600">Model: ${item.modelNumber}</p>` : ''}
                                             </div>
                                             <div class="text-right text-sm">
-                                                <p class="text-gray-600">Last Cleaned: <strong>${coat.lastCleaned ? new Date(coat.lastCleaned).toLocaleDateString() : 'Never'}</strong></p>
-                                                <p class="text-gray-600">Last Inspected: <strong>${coat.lastInspected ? new Date(coat.lastInspected).toLocaleDateString() : 'Never'}</strong></p>
+                                                <p class="text-gray-600">Last Cleaned: <strong>${item.lastCleaned ? new Date(item.lastCleaned).toLocaleDateString() : 'Never'}</strong></p>
+                                                <p class="text-gray-600">Last Inspected: <strong>${item.lastInspected ? new Date(item.lastInspected).toLocaleDateString() : 'Never'}</strong></p>
                                             </div>
                                         </div>
                                         <div class="bg-gray-50 rounded p-3">
-                                            <p class="text-sm font-semibold text-gray-700 mb-2">Activity Log (${coat.logs.length} entries):</p>
+                                            <p class="text-sm font-semibold text-gray-700 mb-2">Activity Log (${item.logs.length} entries):</p>
                                             <div class="space-y-1">
-                                                ${coat.logs.slice().reverse().map(log => `
+                                                ${item.logs.slice().reverse().map(log => `
                                                     <div class="text-sm text-gray-700 flex justify-between">
                                                         <span>${new Date(log.date).toLocaleString()}</span>
                                                         <span>
@@ -336,7 +352,7 @@
                         </div>
                         <button onclick="searchInput=document.getElementById('searchInput').value; handleLookup()" 
                             class="w-full bg-red-600 text-white py-4 rounded-lg font-bold text-lg hover:bg-red-700 transition-colors shadow-lg">
-                            Search Coat
+                            Search Item
                         </button>
                         <div class="mt-4 p-4 bg-blue-50 rounded-lg">
                             <p class="text-sm text-blue-800">
@@ -351,14 +367,20 @@
             } else if (currentStep === 'select') {
                 content.innerHTML = `
                     <div>
-                        <h2 class="text-xl font-bold text-gray-800 mb-4">Multiple Coats Found - Select One</h2>
+                        <h2 class="text-xl font-bold text-gray-800 mb-4">Multiple Items Found - Select One</h2>
                         <div class="space-y-3 mb-6">
-                            ${searchResults.map(([serial, coat]) => `
-                                <button onclick='selectCoat(${JSON.stringify(coat).replace(/'/g, "&apos;")})' 
+                            ${searchResults.map(([serial, item]) => `
+                                <button onclick='selectItem(${JSON.stringify(item).replace(/'/g, "&apos;")})' 
                                     class="w-full bg-gray-50 hover:bg-gray-100 border-2 border-gray-300 rounded-lg p-4 text-left transition-colors">
-                                    <p class="font-mono font-bold text-lg">${serial}</p>
-                                    <p class="text-gray-700">${coat.firefighterName}</p>
-                                    ${coat.modelNumber ? `<p class="text-sm text-gray-600">Model: ${coat.modelNumber}</p>` : ''}
+                                    <div class="flex items-center justify-between">
+                                        <div>
+                                            <p class="font-mono font-bold text-lg">${serial}</p>
+                                            <p class="text-gray-700">${item.firefighterName}</p>
+                                            <p class="text-sm text-purple-600 font-semibold">${getItemIcon(item.itemType)} ${item.itemType}</p>
+                                        </div>
+                                        <span class="text-3xl">${getItemIcon(item.itemType)}</span>
+                                    </div>
+                                    ${item.modelNumber ? `<p class="text-sm text-gray-600 mt-1">Model: ${item.modelNumber}</p>` : ''}
                                 </button>
                             `).join('')}
                         </div>
@@ -370,11 +392,11 @@
             } else if (currentStep === 'register') {
                 content.innerHTML = `
                     <div>
-                        <h2 class="text-xl font-bold text-gray-800 mb-4">New Coat Registration</h2>
+                        <h2 class="text-xl font-bold text-gray-800 mb-4">New Item Registration</h2>
                         
                         <div class="mb-4">
                             <label class="block text-sm font-semibold text-gray-700 mb-2">Full Serial Number *</label>
-                            <input type="text" id="regSerial" value="${newCoatData.serialNumber}" 
+                            <input type="text" id="regSerial" value="${newItemData.serialNumber}" 
                                 class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none font-mono">
                         </div>
 
@@ -382,6 +404,20 @@
                             <label class="block text-sm font-semibold text-gray-700 mb-2">Firefighter Name *</label>
                             <input type="text" id="regName" 
                                 class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none">
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Item Type *</label>
+                            <select id="regItemType" 
+                                class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none">
+                                <option value="">Select item type</option>
+                                <option value="Helmet">🪖 Helmet</option>
+                                <option value="Coat">🧥 Coat</option>
+                                <option value="Pants">👖 Pants</option>
+                                <option value="Boots">🥾 Boots</option>
+                                <option value="Gloves">🧤 Gloves</option>
+                                <option value="Hood">🎭 Hood</option>
+                            </select>
                         </div>
 
                         <div class="mb-4">
@@ -415,12 +451,13 @@
                                 Cancel
                             </button>
                             <button onclick="
-                                newCoatData.serialNumber = document.getElementById('regSerial').value.toUpperCase();
-                                newCoatData.firefighterName = document.getElementById('regName').value;
-                                newCoatData.manufactureDate = document.getElementById('regDate').value;
-                                newCoatData.modelNumber = document.getElementById('regModel').value;
-                                newCoatData.cleaned = document.getElementById('regCleaned').checked;
-                                newCoatData.inspected = document.getElementById('regInspected').checked;
+                                newItemData.serialNumber = document.getElementById('regSerial').value.toUpperCase();
+                                newItemData.firefighterName = document.getElementById('regName').value;
+                                newItemData.itemType = document.getElementById('regItemType').value;
+                                newItemData.manufactureDate = document.getElementById('regDate').value;
+                                newItemData.modelNumber = document.getElementById('regModel').value;
+                                newItemData.cleaned = document.getElementById('regCleaned').checked;
+                                newItemData.inspected = document.getElementById('regInspected').checked;
                                 handleRegister();
                             " class="flex-1 bg-red-600 text-white py-4 rounded-lg font-bold text-lg hover:bg-red-700 transition-colors shadow-lg">
                                 Register & Log
@@ -431,37 +468,41 @@
             } else if (currentStep === 'log') {
                 content.innerHTML = `
                     <div>
-                        <h2 class="text-xl font-bold text-gray-800 mb-4">Coat Found</h2>
+                        <h2 class="text-xl font-bold text-gray-800 mb-4">Item Found</h2>
                         
                         <div class="bg-gray-50 rounded-lg p-4 mb-6">
                             <div class="grid grid-cols-2 gap-3 text-sm">
                                 <div>
                                     <p class="text-gray-600">Serial Number</p>
-                                    <p class="font-mono font-bold">${currentCoat.serialNumber}</p>
+                                    <p class="font-mono font-bold">${currentItem.serialNumber}</p>
                                 </div>
                                 <div>
                                     <p class="text-gray-600">Firefighter</p>
-                                    <p class="font-bold">${currentCoat.firefighterName}</p>
+                                    <p class="font-bold">${currentItem.firefighterName}</p>
                                 </div>
-                                ${currentCoat.modelNumber ? `
+                                <div>
+                                    <p class="text-gray-600">Item Type</p>
+                                    <p class="font-bold text-purple-600">${getItemIcon(currentItem.itemType)} ${currentItem.itemType}</p>
+                                </div>
+                                ${currentItem.modelNumber ? `
                                     <div>
                                         <p class="text-gray-600">Model</p>
-                                        <p class="font-bold">${currentCoat.modelNumber}</p>
+                                        <p class="font-bold">${currentItem.modelNumber}</p>
                                     </div>
                                 ` : ''}
-                                ${currentCoat.manufactureDate ? `
+                                ${currentItem.manufactureDate ? `
                                     <div>
                                         <p class="text-gray-600">Manufacture Date</p>
-                                        <p class="font-bold">${new Date(currentCoat.manufactureDate).toLocaleDateString()}</p>
+                                        <p class="font-bold">${new Date(currentItem.manufactureDate).toLocaleDateString()}</p>
                                     </div>
                                 ` : ''}
                                 <div>
                                     <p class="text-gray-600">Last Cleaned</p>
-                                    <p class="font-bold">${currentCoat.lastCleaned ? new Date(currentCoat.lastCleaned).toLocaleDateString() : 'Never'}</p>
+                                    <p class="font-bold">${currentItem.lastCleaned ? new Date(currentItem.lastCleaned).toLocaleDateString() : 'Never'}</p>
                                 </div>
                                 <div>
                                     <p class="text-gray-600">Last Inspected</p>
-                                    <p class="font-bold">${currentCoat.lastInspected ? new Date(currentCoat.lastInspected).toLocaleDateString() : 'Never'}</p>
+                                    <p class="font-bold">${currentItem.lastInspected ? new Date(currentItem.lastInspected).toLocaleDateString() : 'Never'}</p>
                                 </div>
                             </div>
                         </div>
