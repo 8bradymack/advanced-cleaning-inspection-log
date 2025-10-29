@@ -33,7 +33,7 @@
       <div class="flex items-center gap-3">
         <span id="syncStatus" class="text-sm px-3 py-1 rounded bg-gray-700">Syncing...</span>
         <button id="adminToggle" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition font-semibold">
-          Admin Sign In
+          Admin
         </button>
       </div>
     </div>
@@ -82,11 +82,11 @@
           <label class="block text-sm font-medium text-gray-700 mb-1">Item Type <span class="text-red-500">*</span></label>
           <select name="type" class="border border-gray-300 rounded-lg w-full p-3 focus:border-blue-500 focus:outline-none" required>
             <option value="Helmet">Helmet</option>
+            <option value="Hood">Hood</option>
+            <option value="Gloves">Gloves</option>
             <option value="Coat">Coat</option>
             <option value="Pants">Pants</option>
             <option value="Boots">Boots</option>
-            <option value="Gloves">Gloves</option>
-            <option value="Hood">Hood</option>
           </select>
         </div>
         <div>
@@ -222,10 +222,10 @@
     function updateAdminUI() {
       if (isAdminMode) {
         adminToggle.className = 'bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded transition font-bold';
-        adminToggle.innerHTML = 'ADMIN MODE - Sign Out';
+        adminToggle.innerHTML = 'Admin Sign Out';
       } else {
         adminToggle.className = 'bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition font-semibold';
-        adminToggle.innerHTML = 'Admin Sign In';
+        adminToggle.innerHTML = 'Admin';
       }
     }
 
@@ -277,6 +277,11 @@
 
     document.getElementById('editForm').addEventListener('submit', (e) => {
       e.preventDefault();
+      
+      if (!confirm('Are you sure you want to edit this item? This will apply to future logs only.')) {
+        return;
+      }
+      
       const form = e.target;
       
       // Store the pending edit data
@@ -288,9 +293,41 @@
         manufactureDate: form.manufactureDate.value || ''
       };
       
-      // Close edit modal and open scope modal
+      // Close edit modal and automatically apply as "Future Only"
       editModal.classList.remove('active');
-      editScopeModal.classList.add('active');
+      
+      // Apply changes with snapshots (Future Only behavior)
+      if (editingItem.activities && editingItem.activities.length > 0) {
+        editingItem.activities.forEach(activity => {
+          if (!activity.snapshotName) {
+            activity.snapshotName = editingItem.name;
+            activity.snapshotSerial = editingItem.serial;
+            activity.snapshotType = editingItem.type;
+            activity.snapshotModel = editingItem.model;
+          }
+        });
+      }
+      
+      editingItem.name = pendingEditData.name;
+      editingItem.serial = pendingEditData.serial;
+      editingItem.type = pendingEditData.type;
+      editingItem.model = pendingEditData.model;
+      editingItem.manufactureDate = pendingEditData.manufactureDate;
+      
+      const itemIndex = items.findIndex(item => item.id === editingItem.id);
+      if (itemIndex !== -1) {
+        items[itemIndex] = editingItem;
+      }
+      
+      saveToFirebaseWithFeedback();
+      
+      if (selectedItem && selectedItem.id === editingItem.id) {
+        selectedItem = editingItem;
+      }
+      editingItem = null;
+      pendingEditData = null;
+      renderPage();
+      showToast('Item updated (future logs only)', 'success');
     });
 
     // Edit Scope Modal
@@ -488,7 +525,10 @@
     function renderSearchResults() {
       main.innerHTML = `
         <div class="max-w-3xl mx-auto">
-          <h2 class="text-2xl font-bold mb-6 text-gray-800">Select an Item</h2>
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold text-gray-800">Select an Item</h2>
+            <button id="multiSelectBtn" class="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition font-semibold">Select Multiple</button>
+          </div>
           <div id="results" class="space-y-3 mb-6"></div>
           <button id="backBtn" class="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 transition">Back to Search</button>
         </div>
@@ -531,6 +571,133 @@
       }
 
       document.getElementById('backBtn').addEventListener('click', () => {
+        searchResults = [];
+        renderSearchPage();
+      });
+
+      // Multi-select button
+      document.getElementById('multiSelectBtn').addEventListener('click', () => {
+        renderMultiSelectMode();
+      });
+    }
+
+    function renderMultiSelectMode() {
+      main.innerHTML = `
+        <div class="max-w-3xl mx-auto">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold text-gray-800">Select Multiple Items</h2>
+            <span id="selectedCount" class="text-sm text-gray-600">0 items selected</span>
+          </div>
+          <div id="multiResults" class="space-y-3 mb-6"></div>
+          
+          <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+            <label class="block text-sm font-medium text-gray-700 mb-3">Select Activity for All Selected Items</label>
+            <div class="space-y-2 mb-4">
+              <label class="flex items-center space-x-3 cursor-pointer">
+                <input type="checkbox" id="multiCleaning" class="w-5 h-5" />
+                <span class="text-gray-700">Advanced Cleaning</span>
+              </label>
+              <label class="flex items-center space-x-3 cursor-pointer">
+                <input type="checkbox" id="multiInspection" class="w-5 h-5" />
+                <span class="text-gray-700">Advanced Inspection</span>
+              </label>
+            </div>
+            <div class="flex gap-3">
+              <button id="cancelMulti" class="flex-1 bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 transition font-semibold">Cancel</button>
+              <button id="submitMulti" class="flex-1 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-semibold">Log Activities</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      let selectedItemIds = new Set();
+
+      function renderMultiList() {
+        const multiResults = document.getElementById('multiResults');
+        const selectedCount = document.getElementById('selectedCount');
+        
+        multiResults.innerHTML = searchResults.map((item, idx) => {
+          const isSelected = selectedItemIds.has(item.id);
+          return `
+            <label class="flex items-center space-x-3 p-4 border rounded-lg cursor-pointer hover:bg-gray-50 ${isSelected ? 'bg-blue-50 border-blue-400' : 'border-gray-200'}">
+              <input type="checkbox" class="w-5 h-5 multi-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} />
+              <div class="flex-1">
+                <div class="font-semibold text-lg text-gray-800">${item.name}</div>
+                <div class="grid grid-cols-3 gap-2 mt-2 text-sm">
+                  <div><span class="text-gray-500">Serial:</span> <span class="font-medium">${item.serial}</span></div>
+                  <div><span class="text-gray-500">Type:</span> <span class="font-medium">${item.type}</span></div>
+                  <div><span class="text-gray-500">Model:</span> <span class="font-medium">${item.model || 'N/A'}</span></div>
+                </div>
+              </div>
+            </label>
+          `;
+        }).join('');
+
+        selectedCount.textContent = `${selectedItemIds.size} items selected`;
+
+        document.querySelectorAll('.multi-checkbox').forEach(checkbox => {
+          checkbox.addEventListener('change', (e) => {
+            const itemId = e.target.dataset.id;
+            if (e.target.checked) {
+              selectedItemIds.add(itemId);
+            } else {
+              selectedItemIds.delete(itemId);
+            }
+            renderMultiList();
+          });
+        });
+      }
+
+      renderMultiList();
+
+      document.getElementById('cancelMulti').addEventListener('click', () => {
+        renderSearchResults();
+      });
+
+      document.getElementById('submitMulti').addEventListener('click', () => {
+        const cleaning = document.getElementById('multiCleaning').checked;
+        const inspection = document.getElementById('multiInspection').checked;
+
+        if (selectedItemIds.size === 0) {
+          showToast('Please select at least one item', 'warning');
+          return;
+        }
+
+        if (!cleaning && !inspection) {
+          showToast('Please select at least one activity', 'warning');
+          return;
+        }
+
+        const activity = {
+          date: new Date().toLocaleDateString(),
+          timestamp: Date.now(),
+          cleaning: cleaning,
+          inspection: inspection
+        };
+
+        let updateCount = 0;
+        selectedItemIds.forEach(itemId => {
+          const item = items.find(i => i.id === itemId);
+          if (item) {
+            if (!item.activities) {
+              item.activities = [];
+            }
+            
+            item.activities.push({
+              ...activity,
+              snapshotName: item.name,
+              snapshotSerial: item.serial,
+              snapshotType: item.type,
+              snapshotModel: item.model
+            });
+            
+            updateCount++;
+          }
+        });
+
+        saveToFirebaseWithFeedback();
+        showToast(`Activity logged for ${updateCount} items`, 'success');
+        
         searchResults = [];
         renderSearchPage();
       });
@@ -694,11 +861,11 @@
               <select name="type" class="border border-gray-300 rounded-lg w-full p-3 focus:border-blue-500 focus:outline-none bg-white text-gray-800" required>
                 <option value="">Select item type</option>
                 <option value="Helmet">Helmet</option>
+                <option value="Hood">Hood</option>
+                <option value="Gloves">Gloves</option>
                 <option value="Coat">Coat</option>
                 <option value="Pants">Pants</option>
                 <option value="Boots">Boots</option>
-                <option value="Gloves">Gloves</option>
-                <option value="Hood">Hood</option>
               </select>
             </div>
             <div>
