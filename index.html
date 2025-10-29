@@ -18,7 +18,6 @@
     button:not(.nav-btn):hover { opacity: 0.9; }
     .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
     .modal.active { display: flex; align-items: center; justify-content: center; }
-
   </style>
 </head>
 
@@ -105,22 +104,53 @@
     </div>
   </div>
 
-  <!-- Edit Scope Modal -->
-  <div id="editScopeModal" class="modal">
-    <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
-      <h3 class="text-xl font-bold mb-4 text-gray-800">Apply Changes</h3>
-      <p class="text-gray-600 mb-6">How would you like to apply these changes?</p>
-      <div class="space-y-3">
-        <button id="editFutureOnly" class="w-full bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 transition font-semibold">
-          Future Logs Only
-        </button>
-        <button id="editAllLogs" class="w-full bg-purple-600 text-white px-4 py-3 rounded-lg hover:bg-purple-700 transition font-semibold">
-          All Past & Future Logs
-        </button>
-        <button id="cancelEditScope" class="w-full bg-gray-600 text-white px-4 py-3 rounded-lg hover:bg-gray-700 transition font-semibold">
-          Cancel
-        </button>
-      </div>
+  <!-- Edit Log Modal -->
+  <div id="editLogModal" class="modal">
+    <div class="bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-auto">
+      <h3 class="text-xl font-bold mb-4 text-gray-800">Edit Log Entry</h3>
+      <form id="editLogForm" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Firefighter Name <span class="text-red-500">*</span></label>
+          <input name="name" type="text" class="border border-gray-300 rounded-lg w-full p-3 focus:border-blue-500 focus:outline-none" required />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Serial Number <span class="text-red-500">*</span></label>
+          <input name="serial" type="text" class="border border-gray-300 rounded-lg w-full p-3 focus:border-blue-500 focus:outline-none" required />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Item Type <span class="text-red-500">*</span></label>
+          <select name="type" class="border border-gray-300 rounded-lg w-full p-3 focus:border-blue-500 focus:outline-none" required>
+            <option value="Helmet">Helmet</option>
+            <option value="Hood">Hood</option>
+            <option value="Gloves">Gloves</option>
+            <option value="Coat">Coat</option>
+            <option value="Pants">Pants</option>
+            <option value="Boots">Boots</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Model Number</label>
+          <input name="model" type="text" class="border border-gray-300 rounded-lg w-full p-3 focus:border-blue-500 focus:outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Date <span class="text-red-500">*</span></label>
+          <input name="date" type="date" class="border border-gray-300 rounded-lg w-full p-3 focus:border-blue-500 focus:outline-none" required />
+        </div>
+        <div class="space-y-2">
+          <label class="flex items-center space-x-3 cursor-pointer">
+            <input type="checkbox" name="cleaning" class="w-5 h-5" />
+            <span class="text-gray-700">Advanced Cleaning</span>
+          </label>
+          <label class="flex items-center space-x-3 cursor-pointer">
+            <input type="checkbox" name="inspection" class="w-5 h-5" />
+            <span class="text-gray-700">Advanced Inspection</span>
+          </label>
+        </div>
+        <div class="flex gap-3 pt-4">
+          <button type="button" id="cancelEditLog" class="flex-1 bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition">Cancel</button>
+          <button type="submit" class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">Save Changes</button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -154,13 +184,15 @@
     let editingItem = null;
     let pendingEditData = null;
     let deletingItem = null;
+    let editingLog = null;
     let isAdminMode = false;
+    let isMultiSelectMode = false;
     const main = document.getElementById('main-content');
     const toastArea = document.getElementById('toast-area');
     const syncStatus = document.getElementById('syncStatus');
     const adminModal = document.getElementById('adminModal');
     const editModal = document.getElementById('editModal');
-    const editScopeModal = document.getElementById('editScopeModal');
+    const editLogModal = document.getElementById('editLogModal');
     const deleteItemModal = document.getElementById('deleteItemModal');
     const adminToggle = document.getElementById('adminToggle');
     const navButtons = document.getElementById('navButtons');
@@ -235,6 +267,7 @@
         currentPage = btn.dataset.page;
         selectedItem = null;
         searchResults = [];
+        isMultiSelectMode = false;
         updateNavHighlight();
         renderPage();
       });
@@ -293,7 +326,7 @@
         manufactureDate: form.manufactureDate.value || ''
       };
       
-      // Close edit modal and automatically apply as "Future Only"
+      // Close edit modal
       editModal.classList.remove('active');
       
       // Apply changes with snapshots (Future Only behavior)
@@ -330,84 +363,48 @@
       showToast('Item updated (future logs only)', 'success');
     });
 
-    // Edit Scope Modal
-    document.getElementById('cancelEditScope').addEventListener('click', () => {
-      editScopeModal.classList.remove('active');
-      pendingEditData = null;
-      editingItem = null;
+    // Edit Log Modal
+    document.getElementById('cancelEditLog').addEventListener('click', () => {
+      editLogModal.classList.remove('active');
+      editingLog = null;
     });
 
-    document.getElementById('editFutureOnly').addEventListener('click', () => {
-      if (editingItem && pendingEditData) {
-        // Store snapshots of current item data in all existing activities
-        if (editingItem.activities && editingItem.activities.length > 0) {
-          editingItem.activities.forEach(activity => {
-            // Only add snapshot if it doesn't exist (preserve original data)
-            if (!activity.snapshotName) {
-              activity.snapshotName = editingItem.name;
-              activity.snapshotSerial = editingItem.serial;
-              activity.snapshotType = editingItem.type;
-              activity.snapshotModel = editingItem.model;
-            }
-          });
-        }
+    document.getElementById('editLogForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      
+      if (!editingLog) return;
+      
+      const form = e.target;
+      const item = items.find(i => i.id === editingLog.itemId);
+      
+      if (!item) return;
+      
+      const activityIndex = item.activities.findIndex(a => a.timestamp === editingLog.timestamp);
+      
+      if (activityIndex !== -1) {
+        // Parse the date string and convert to timestamp
+        const dateValue = form.date.value;
+        const dateObj = new Date(dateValue + 'T00:00:00');
+        const newTimestamp = dateObj.getTime();
         
-        // Now apply changes to the item (future logs will use new data)
-        editingItem.name = pendingEditData.name;
-        editingItem.serial = pendingEditData.serial;
-        editingItem.type = pendingEditData.type;
-        editingItem.model = pendingEditData.model;
-        editingItem.manufactureDate = pendingEditData.manufactureDate;
-        
-        const itemIndex = items.findIndex(item => item.id === editingItem.id);
-        if (itemIndex !== -1) {
-          items[itemIndex] = editingItem;
-        }
-        
-        saveToFirebaseWithFeedback();
-        editScopeModal.classList.remove('active');
-        
-        // Refresh the current view
-        if (selectedItem && selectedItem.id === editingItem.id) {
-          selectedItem = editingItem;
-        }
-        editingItem = null;
-        pendingEditData = null;
-        renderPage();
-        showToast('Item updated (future logs only)', 'success');
-      }
-    });
-
-    document.getElementById('editAllLogs').addEventListener('click', () => {
-      if (editingItem && pendingEditData) {
-        // Apply changes to the item
-        editingItem.name = pendingEditData.name;
-        editingItem.serial = pendingEditData.serial;
-        editingItem.type = pendingEditData.type;
-        editingItem.model = pendingEditData.model;
-        editingItem.manufactureDate = pendingEditData.manufactureDate;
-        
-        const itemIndex = items.findIndex(item => item.id === editingItem.id);
-        if (itemIndex !== -1) {
-          items[itemIndex] = editingItem;
-        }
-        
-        // Update all past logs with new item information
-        // Note: The logs store references to the item data via itemId,
-        // so they will automatically reflect the updated item information
-        // when displayed. This is already handled in the rendering logic.
+        // Update the activity with new values
+        item.activities[activityIndex] = {
+          ...item.activities[activityIndex],
+          snapshotName: form.name.value.trim(),
+          snapshotSerial: form.serial.value.trim(),
+          snapshotType: form.type.value,
+          snapshotModel: form.model.value.trim() || '',
+          date: dateObj.toLocaleDateString(),
+          timestamp: newTimestamp,
+          cleaning: form.cleaning.checked,
+          inspection: form.inspection.checked
+        };
         
         saveToFirebaseWithFeedback();
-        editScopeModal.classList.remove('active');
-        
-        // Refresh the current view
-        if (selectedItem && selectedItem.id === editingItem.id) {
-          selectedItem = editingItem;
-        }
-        editingItem = null;
-        pendingEditData = null;
+        editLogModal.classList.remove('active');
+        editingLog = null;
         renderPage();
-        showToast('Item updated (all past & future logs)', 'success');
+        showToast('Log entry updated successfully', 'success');
       }
     });
 
@@ -420,6 +417,30 @@
       form.model.value = item.model || '';
       form.manufactureDate.value = item.manufactureDate || '';
       editModal.classList.add('active');
+    }
+
+    function openEditLogModal(log) {
+      editingLog = log;
+      const form = document.getElementById('editLogForm');
+      
+      // Convert date string to YYYY-MM-DD format
+      const dateParts = log.date.split('/');
+      let dateValue = '';
+      if (dateParts.length === 3) {
+        const month = dateParts[0].padStart(2, '0');
+        const day = dateParts[1].padStart(2, '0');
+        const year = dateParts[2];
+        dateValue = `${year}-${month}-${day}`;
+      }
+      
+      form.name.value = log.name;
+      form.serial.value = log.serial;
+      form.type.value = log.type;
+      form.model.value = log.model || '';
+      form.date.value = dateValue;
+      form.cleaning.checked = log.cleaning;
+      form.inspection.checked = log.inspection;
+      editLogModal.classList.add('active');
     }
 
     // Delete Item Modal
@@ -518,11 +539,17 @@
           item.serial.toLowerCase().includes(term)
         );
         
+        isMultiSelectMode = false;
         renderSearchResults();
       });
     }
 
     function renderSearchResults() {
+      if (isMultiSelectMode) {
+        renderMultiSelectMode();
+        return;
+      }
+
       main.innerHTML = `
         <div class="max-w-3xl mx-auto">
           <div class="flex justify-between items-center mb-6">
@@ -577,16 +604,22 @@
 
       // Multi-select button
       document.getElementById('multiSelectBtn').addEventListener('click', () => {
+        isMultiSelectMode = true;
         renderMultiSelectMode();
       });
     }
 
     function renderMultiSelectMode() {
+      let selectedItemIds = new Set();
+
       main.innerHTML = `
         <div class="max-w-3xl mx-auto">
           <div class="flex justify-between items-center mb-6">
-            <h2 class="text-2xl font-bold text-gray-800">Select Multiple Items</h2>
-            <span id="selectedCount" class="text-sm text-gray-600">0 items selected</span>
+            <div class="flex items-center gap-3">
+              <h2 class="text-2xl font-bold text-gray-800">Select Multiple Items</h2>
+              <span id="selectedCount" class="text-sm text-gray-600 bg-blue-100 px-3 py-1 rounded-full">0 items selected</span>
+            </div>
+            <button id="cancelMultiTop" class="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 transition font-semibold">Cancel</button>
           </div>
           <div id="multiResults" class="space-y-3 mb-6"></div>
           
@@ -609,8 +642,6 @@
           </div>
         </div>
       `;
-
-      let selectedItemIds = new Set();
 
       function renderMultiList() {
         const multiResults = document.getElementById('multiResults');
@@ -650,7 +681,13 @@
 
       renderMultiList();
 
+      document.getElementById('cancelMultiTop').addEventListener('click', () => {
+        isMultiSelectMode = false;
+        renderSearchResults();
+      });
+
       document.getElementById('cancelMulti').addEventListener('click', () => {
+        isMultiSelectMode = false;
         renderSearchResults();
       });
 
@@ -699,6 +736,7 @@
         showToast(`Activity logged for ${updateCount} items`, 'success');
         
         searchResults = [];
+        isMultiSelectMode = false;
         renderSearchPage();
       });
     }
@@ -1053,6 +1091,10 @@
 
     // --------------------- Stats & Logs Page
     function renderStatsPage() {
+      const exportButtons = isAdminMode 
+        ? `<button id="exportStats" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">Export Stats</button>`
+        : '';
+
       const deleteLogsButton = isAdminMode 
         ? `<button id="deleteLogsBtn" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition">Delete Logs</button>`
         : '';
@@ -1060,6 +1102,10 @@
       const searchBar = isAdminMode
         ? `<input type="text" id="logsSearchInput" placeholder="Search logs..." 
             class="border-2 border-gray-300 rounded-lg px-4 py-2 focus:border-blue-500 focus:outline-none" />`
+        : '';
+
+      const exportLogsButton = isAdminMode
+        ? `<button id="exportLogs" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">Export Logs</button>`
         : '';
 
       main.innerHTML = `
@@ -1070,7 +1116,7 @@
           <div class="bg-white p-6 rounded-lg shadow-md mb-6">
             <div class="flex justify-between items-center mb-4">
               <h3 class="text-xl font-semibold text-gray-800">Activity Summary</h3>
-              <button id="exportStats" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">Export Stats</button>
+              ${exportButtons}
             </div>
             <canvas id="chart" width="400" height="150"></canvas>
           </div>
@@ -1081,7 +1127,7 @@
               <h3 class="text-xl font-semibold text-gray-800">All Activity Logs</h3>
               <div class="flex gap-3 items-center">
                 ${searchBar}
-                <button id="exportLogs" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">Export Logs</button>
+                ${exportLogsButton}
                 ${deleteLogsButton}
               </div>
             </div>
@@ -1096,6 +1142,7 @@
                     <th class="p-3 font-semibold">Model</th>
                     <th class="p-3 font-semibold text-center">Cleaning</th>
                     <th class="p-3 font-semibold text-center">Inspection</th>
+                    ${isAdminMode ? '<th class="p-3 font-semibold text-center">Actions</th>' : ''}
                   </tr>
                 </thead>
                 <tbody id="logBody"></tbody>
@@ -1156,11 +1203,12 @@
       allActivities.sort((a, b) => b.timestamp - a.timestamp);
 
       function renderLogsTable(filteredActivities) {
-        const deleteColumn = isAdminMode ? '<th class="p-3 font-semibold text-center">Action</th>' : '';
-        
         logBody.innerHTML = filteredActivities.map((log, idx) => {
-          const deleteButton = isAdminMode 
-            ? `<td class="p-3 text-center"><button class="delete-log-btn bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition text-xs font-semibold" data-timestamp="${log.timestamp}" data-item-id="${log.itemId}">Delete</button></td>`
+          const actionButtons = isAdminMode 
+            ? `<td class="p-3 text-center">
+                <button class="edit-log-btn bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 transition text-xs font-semibold mr-2" data-timestamp="${log.timestamp}" data-item-id="${log.itemId}">Edit</button>
+                <button class="delete-log-btn bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition text-xs font-semibold" data-timestamp="${log.timestamp}" data-item-id="${log.itemId}">Delete</button>
+              </td>`
             : '';
           
           return `
@@ -1172,25 +1220,26 @@
               <td class="p-3">${log.model || 'N/A'}</td>
               <td class="p-3 text-center">${log.cleaning ? '<span class="text-green-600 font-bold">✓</span>' : '<span class="text-gray-400">—</span>'}</td>
               <td class="p-3 text-center">${log.inspection ? '<span class="text-green-600 font-bold">✓</span>' : '<span class="text-gray-400">—</span>'}</td>
-              ${deleteButton}
+              ${actionButtons}
             </tr>
           `;
         }).join('');
 
-        // Update table header if needed
+        // Edit individual logs (admin only)
         if (isAdminMode) {
-          const thead = document.querySelector('thead tr');
-          const lastHeader = thead.querySelector('th:last-child');
-          if (!lastHeader.textContent.includes('Action')) {
-            const actionHeader = document.createElement('th');
-            actionHeader.className = 'p-3 font-semibold text-center';
-            actionHeader.textContent = 'Action';
-            thead.appendChild(actionHeader);
-          }
-        }
+          document.querySelectorAll('.edit-log-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const timestamp = parseInt(btn.dataset.timestamp);
+              const itemId = btn.dataset.itemId;
+              const logToEdit = filteredActivities.find(a => a.timestamp === timestamp && a.itemId === itemId);
+              
+              if (logToEdit) {
+                openEditLogModal(logToEdit);
+              }
+            });
+          });
 
-        // Delete individual logs (admin only)
-        if (isAdminMode) {
+          // Delete individual logs (admin only)
           document.querySelectorAll('.delete-log-btn').forEach(btn => {
             btn.addEventListener('click', () => {
               const timestamp = parseInt(btn.dataset.timestamp);
@@ -1249,10 +1298,10 @@
             showToast('All logs deleted successfully', 'success');
           }
         });
-      }
 
-      document.getElementById('exportStats').addEventListener('click', exportStatsToExcel);
-      document.getElementById('exportLogs').addEventListener('click', exportLogsToExcel);
+        document.getElementById('exportStats').addEventListener('click', exportStatsToExcel);
+        document.getElementById('exportLogs').addEventListener('click', exportLogsToExcel);
+      }
     }
 
     // ================================
@@ -1285,10 +1334,10 @@
         if (item.activities && item.activities.length > 0) {
           item.activities.forEach(activity => {
             data.push({
-              'Firefighter Name': item.name,
-              'Item Type': item.type,
-              'Serial Number': item.serial,
-              'Model': item.model || 'N/A',
+              'Firefighter Name': activity.snapshotName || item.name,
+              'Item Type': activity.snapshotType || item.type,
+              'Serial Number': activity.snapshotSerial || item.serial,
+              'Model': activity.snapshotModel || item.model || 'N/A',
               'Date': activity.date,
               'Advanced Cleaning': activity.cleaning ? 'Yes' : 'No',
               'Advanced Inspection': activity.inspection ? 'Yes' : 'No'
